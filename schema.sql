@@ -56,3 +56,20 @@ CREATE TABLE IF NOT EXISTS order_items (
 );
 CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id);
 CREATE INDEX IF NOT EXISTS idx_order_items_seller ON order_items(seller_id);
+
+-- Enforce stock checks inside the same D1 batch transaction to prevent overselling.
+CREATE TRIGGER IF NOT EXISTS order_item_stock_guard
+BEFORE INSERT ON order_items
+BEGIN
+  SELECT CASE
+    WHEN (SELECT stock FROM products WHERE id=NEW.product_id) IS NULL
+      THEN RAISE(ABORT, 'product_not_found')
+    WHEN (SELECT stock FROM products WHERE id=NEW.product_id) < NEW.quantity
+      THEN RAISE(ABORT, 'insufficient_stock')
+  END;
+END;
+CREATE TRIGGER IF NOT EXISTS order_item_decrement_stock
+AFTER INSERT ON order_items
+BEGIN
+  UPDATE products SET stock=stock-NEW.quantity WHERE id=NEW.product_id;
+END;
