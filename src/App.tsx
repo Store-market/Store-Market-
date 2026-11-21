@@ -1,10 +1,11 @@
 import {useEffect,useMemo,useState} from "react";
+import type {CSSProperties,FormEvent} from "react";
 import {Search,ShoppingBag,UserRound,Menu,X,Heart,Star,Truck,ShieldCheck,Headphones,ChevronLeft,Sparkles,Store,Plus,Minus,Trash2,LayoutDashboard,Globe2,LogOut,Package,RefreshCw} from "lucide-react";
 import {categories,products as demoProducts,price,Product} from "./data";
 import {storeApi,ApiUser,ApiProduct} from "./api";
 type Line={product:Product;qty:number};
 type Notice={kind:"ok"|"error";text:string};
-const inputStyle:React.CSSProperties={display:"block",width:"100%",padding:"12px",margin:"8px 0 14px",border:"1px solid #dfe5eb",borderRadius:7,background:"#fff",color:"#182a3e"};
+const inputStyle:CSSProperties={display:"block",width:"100%",padding:"12px",margin:"8px 0 14px",border:"1px solid #dfe5eb",borderRadius:7,background:"#fff",color:"#182a3e"};
 const buttonStyle:React.CSSProperties={background:"#15283d",color:"#fff",padding:"11px 16px",borderRadius:7,fontWeight:700};
 const wilayas=["أدرار","الشلف","الأغواط","أم البواقي","باتنة","بجاية","بسكرة","بشار","البليدة","البويرة","تمنراست","تبسة","تلمسان","تيارت","تيزي وزو","الجزائر","الجلفة","جيجل","سطيف","سعيدة","سكيكدة","سيدي بلعباس","عنابة","قالمة","قسنطينة","المدية","مستغانم","المسيلة","معسكر","ورقلة","وهران","البيض","إليزي","برج بوعريريج","بومرداس","الطارف","تندوف","تيسمسيلت","الوادي","خنشلة","سوق أهراس","تيبازة","ميلة","عين الدفلى","النعامة","عين تموشنت","غرداية","غليزان","تيميمون","برج باجي مختار","أولاد جلال","بني عباس","عين صالح","عين قزام","تقرت","جانت","المغير","المنيعة"];
 export default function App(){
@@ -21,7 +22,7 @@ export default function App(){
  const allProducts:Product[]=dbProducts.length?dbProducts.map((p,i)=>({id:100000+i,apiId:p.id,name:p.name,category:p.category,price:p.price_dzd,rating:0,reviews:0,emoji:"📦",color:"#edf2f6",seller:"Store Market"})):demoProducts;
  const shown=useMemo(()=>allProducts.filter(p=>(cat==="الكل"||p.category===cat)&&(!q||p.name.toLowerCase().includes(q.toLowerCase())||p.category.includes(q))),[allProducts,cat,q]);
  const add=(p:Product)=>{setCart(old=>{const x=old.find(l=>l.product.id===p.id);return x?old.map(l=>l.product.id===p.id?{...l,qty:l.qty+1}:l):[...old,{product:p,qty:1}]});msg(ar?"أضيف المنتج إلى السلة":"Produit ajouté")};
- const doAuth=async(e:React.FormEvent)=>{e.preventDefault();setBusy(true);try{if(authMode==="login"){const r=await storeApi.login(authForm.email,authForm.password);setUser(r.user);setAuthOpen(false);msg(ar?"تم تسجيل الدخول بنجاح":"Connexion réussie")}else{const r=await storeApi.register({...authForm,role:authRole});setAuthOpen(false);msg(r.message);setAuthMode("login")}}catch(e){msg((e as Error).message,"error")}finally{setBusy(false)}};
+ const doAuth=async(e:FormEvent)=>{e.preventDefault();setBusy(true);try{if(authMode==="login"){const r=await storeApi.login(authForm.email,authForm.password);setUser(r.user);setAuthOpen(false);msg(ar?"تم تسجيل الدخول بنجاح":"Connexion réussie")}else{const r=await storeApi.register({...authForm,role:authRole});setAuthOpen(false);msg(r.message);setAuthMode("login")}}catch(e){msg((e as Error).message,"error")}finally{setBusy(false)}};
  const logout=async()=>{try{await storeApi.logout()}finally{setUser(null);go("shop");msg(ar?"تم تسجيل الخروج":"Déconnexion réussie")}};
  const doCheckout=async(e:React.FormEvent)=>{e.preventDefault();if(!user){setAuthOpen(true);setAuthMode("login");return}if(cart.some(x=>!x.product.apiId)){msg(ar?"هذه منتجات تجريبية. أضف منتجات منشورة من قاعدة البيانات لإتمام طلب حقيقي.":"Ces articles sont des exemples. Ajoutez des produits publiés pour commander.","error");return}setBusy(true);try{const r=await storeApi.createDemoCodOrder({...checkout,items:cart.map(x=>({product_id:x.product.apiId!,quantity:x.qty}))});setCart([]);setOpen(false);msg((ar?"تم تسجيل الطلب التجريبي رقم ":"Commande démo enregistrée : ")+r.order_id);refreshProducts()}catch(e){msg((e as Error).message,"error")}finally{setBusy(false)}};
  const addSellerProduct=async(e:React.FormEvent)=>{e.preventDefault();setBusy(true);try{const r=await storeApi.createSellerProduct({...sellerForm,price_dzd:Number(sellerForm.price_dzd),stock:Number(sellerForm.stock)});msg(r.message);setSellerForm({name:"",description:"",category:"الإلكترونيات",price_dzd:"",stock:"",image_url:""})}catch(e){msg((e as Error).message,"error")}finally{setBusy(false)}};
