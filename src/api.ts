@@ -42,6 +42,10 @@ export const storeApi = {
       "orders", { method: "POST", body: JSON.stringify(input) }
     ),
   sellerOrders: () => request<{ orders: Array<Record<string, unknown>> }>("seller/orders", { method: "GET" }),
+  customerOrders: () => request<{ orders: Array<Record<string, unknown>> }>("customer/orders", { method: "GET" }),
+  adminOrders: () => request<{ orders: Array<Record<string, unknown>> }>("admin/orders", { method: "GET" }),
+  setOrderStatus: (id: string, status: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled") =>
+    request<{ ok: boolean }>(`admin/orders/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ status }) }),
   adminOverview: () => request<{ users: number; sellers: number; products: number; orders: number }>("admin/overview", { method: "GET" }),
   adminSellers: () => request<{ sellers: Array<Record<string, unknown>> }>("admin/sellers", { method: "GET" }),
   setSellerStatus: (id: string, status: "active" | "pending" | "suspended") =>
