@@ -148,7 +148,6 @@ export async function onRequest({ request, env }) {
           .bind(orderId,user.id,data.customer_name.trim().slice(0,100),data.phone.trim().slice(0,30),data.wilaya.trim().slice(0,100),data.address.trim().slice(0,500),total),
         ...lines.map(({p,qty}) => env.DB.prepare("INSERT INTO order_items (id,order_id,product_id,seller_id,product_name,unit_price_dzd,quantity) VALUES (?,?,?,?,?,?,?)")
           .bind(uid(),orderId,p.id,p.seller_id,p.name,p.price_dzd,qty)),
-        ...lines.map(({p,qty}) => env.DB.prepare("UPDATE products SET stock=stock-? WHERE id=? AND stock>=?").bind(qty,p.id,qty))
       ];
       await env.DB.batch(statements);
       return json({ ok:true,order_id:orderId,total_dzd:total,payment_method:"cod_demo",message:"طلب تجريبي مسجل؛ لا يوجد تحصيل مالي." },201);
