@@ -159,6 +159,27 @@ export async function onRequest({ request, env }) {
       return json({ orders: rows.results || [] });
     }
 
+    if (path === "customer/orders" && method === "GET") {
+      if (user.role !== "customer") return fail("هذه الخدمة للعملاء فقط.",403);
+      const rows = await env.DB.prepare("SELECT id,status,total_dzd,wilaya,created_at FROM orders WHERE customer_id=? ORDER BY created_at DESC LIMIT 100").bind(user.id).all();
+      return json({ orders: rows.results || [] });
+    }
+
+    if (path === "admin/orders" && method === "GET") {
+      if (user.role !== "owner") return fail("هذه الخدمة للمالك فقط.",403);
+      const rows = await env.DB.prepare("SELECT id,customer_name,phone,wilaya,address,status,total_dzd,created_at FROM orders ORDER BY created_at DESC LIMIT 300").all();
+      return json({ orders: rows.results || [] });
+    }
+
+    if (path.startsWith("admin/orders/") && method === "PATCH") {
+      if (user.role !== "owner") return fail("هذه الخدمة للمالك فقط.",403);
+      const id = path.slice("admin/orders/".length);
+      const data = await body(request);
+      if (!["pending","confirmed","shipped","delivered","cancelled"].includes(data?.status)) return fail("حالة الطلب غير صالحة.");
+      await env.DB.prepare("UPDATE orders SET status=? WHERE id=?").bind(data.status,id).run();
+      return json({ ok:true });
+    }
+
     if (path === "admin/overview" && method === "GET") {
       if (user.role !== "owner") return fail("هذه الخدمة للمالك فقط.",403);
       const [users, sellers, products, orders] = await Promise.all([
