@@ -39,6 +39,49 @@ async function currentUser(request, env) {
 function requireFields(data, fields) {
   return data && fields.every(key => typeof data[key] === "string" && data[key].trim().length);
 }
+
+async function runAI(env, user, prompt) {
+  const provider = String(env.AI_PROVIDER || "auto").toLowerCase();
+  const system = "أنت مساعد Store Market، سوق إلكتروني جزائري. أجب بلغة المستخدم (العربية أو الفرنسية)، بوضوح واختصار. ساعد في التسوق، فهم المنتجات، البيع وخدمة العملاء. لا تدّعِ توفر منتج أو سعر أو شحن أو دفع غير مثبت في البيانات. لا تطلب كلمات المرور أو رموز التحقق أو بيانات البطاقات. لا تنفذ أي شراء أو نشر أو تغيير سعر أو إجراء إداري؛ أنت تقدم معلومات واقتراحات فقط، وأي إجراء حساس يحتاج موافقة المالك. إذا لم تعرف معلومة فقل ذلك بوضوح.";
+  const roleContext = user.role === "owner" ? "المستخدم هو مالك المنصة." : user.role === "seller" ? "المستخدم بائع." : "المستخدم عميل.";
+  if ((provider === "auto" || provider === "cloudflare") && env.AI) {
+    const result = await env.AI.run(env.CF_AI_MODEL || "@cf/meta/llama-3.1-8b-instruct", {
+      messages: [
+        { role: "system", content: system + " " + roleContext },
+        { role: "user", content: prompt }
+      ],
+      max_tokens: 500
+    });
+    const answer = typeof result?.response === "string" ? result.response
+      : typeof result?.result?.response === "string" ? result.result.response
+      : typeof result?.output_text === "string" ? result.output_text : "";
+    if (!answer) throw new Error("تعذر قراءة استجابة محرك Cloudflare AI.");
+    return { answer, provider: "cloudflare" };
+  }
+  if ((provider === "auto" || provider === "anthropic" || provider === "claude") && env.ANTHROPIC_API_KEY) {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2026-10-21"
+      },
+      body: JSON.stringify({
+        model: env.ANTHROPIC_MODEL || "claude-sonnet-5-5",
+        max_tokens: 500,
+        system: system + " " + roleContext,
+        messages: [{ role: "user", content: prompt }]
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error("تعذر الاتصال بمحرك Claude AI (" + response.status + ").");
+    const answer = Array.isArray(data.content) ? data.content.filter(x => x.type === "text").map(x => x.text).join("\n") : "";
+    if (!answer) throw new Error("لم يرجع Claude AI إجابة نصية.");
+    return { answer, provider: "claude" };
+  }
+  throw new Error("لم يتم إعداد محرك ذكاء اصطناعي. أضف ربط Workers AI أو مفتاح Claude في Cloudflare.");
+}
+
 export async function onRequest({ request, env }) {
   if (!env.DB) return fail("قاعدة البيانات غير مربوطة بعد. راجع إعداد Cloudflare D1.", 503);
   const url = new URL(request.url);
@@ -112,6 +155,23 @@ export async function onRequest({ request, env }) {
 
     const user = await currentUser(request, env);
     if (!user) return fail("يلزم تسجيل الدخول.", 401);
+
+
+    if (path === "ai/status" && method === "GET") {
+      return json({ configured: !!env.AI || !!env.ANTHROPIC_API_KEY, provider: env.AI_PROVIDER || "auto" });
+    }
+
+    if (path === "ai/chat" && method === "POST") {
+      const data = await body(request);
+      if (!data || typeof data.message !== "string" || !data.message.trim()) return fail("اكتب سؤالك أولاً.");
+      if (data.message.length > 2000) return fail("الرسالة طويلة جداً؛ الحد الأقصى 2000 حرف.");
+      try {
+        const result = await runAI(env, user, data.message.trim());
+        return json({ ok: true, answer: result.answer, provider: result.provider });
+      } catch (error) {
+        return fail(error instanceof Error ? error.message : "تعذر تشغيل المساعد الذكي.", 503);
+      }
+    }
 
     if (path === "seller/products" && method === "POST") {
       if (user.role !== "seller") return fail("هذه الخدمة للبائعين فقط.", 403);
