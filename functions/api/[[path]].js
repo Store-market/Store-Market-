@@ -40,46 +40,86 @@ function requireFields(data, fields) {
   return data && fields.every(key => typeof data[key] === "string" && data[key].trim().length);
 }
 
+function isComplexPrompt(prompt) {
+  const text = prompt.toLowerCase();
+  const complexSignals = [
+    "حلل", "حلّل", "قارن", "خطة", "استراتيجية", "استراتيجي", "تقرير", "دراسة",
+    "برمج", "كود", "خطأ", "تصميم نظام", "متطلبات", "قانوني", "تحليل", "تفصيلي",
+    "analyse", "analyser", "compare", "stratégie", "plan détaillé", "rapport",
+    "architecture", "programmer", "code", "déboguer", "complex", "detailed",
+    "analyze", "strategy", "design a system", "debug", "research"
+  ];
+  return prompt.length > 650 || complexSignals.some(signal => text.includes(signal));
+}
+
+async function runCloudflareAI(env, system, prompt) {
+  if (!env.AI) throw new Error("Workers AI غير مربوط.");
+  const result = await env.AI.run(env.CF_AI_MODEL || "@cf/meta/llama-3.1-8b-instruct-fast", {
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: prompt }
+    ],
+    max_tokens: 700
+  });
+  const answer = typeof result?.response === "string" ? result.response
+    : typeof result?.result?.response === "string" ? result.result.response
+    : typeof result?.output_text === "string" ? result.output_text : "";
+  if (!answer) throw new Error("تعذر قراءة استجابة Cloudflare AI.");
+  return { answer, provider: "cloudflare" };
+}
+
+async function runClaudeAI(env, system, prompt) {
+  if (!env.ANTHROPIC_API_KEY) throw new Error("مفتاح Claude غير مضبوط.");
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01"
+    },
+    body: JSON.stringify({
+      model: env.ANTHROPIC_MODEL || "claude-sonnet-5",
+      max_tokens: 900,
+      system,
+      messages: [{ role: "user", content: prompt }]
+    })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error("تعذر الاتصال بمحرك Claude AI (" + response.status + ").");
+  const answer = Array.isArray(data.content) ? data.content.filter(x => x.type === "text").map(x => x.text).join("\n") : "";
+  if (!answer) throw new Error("لم يرجع Claude AI إجابة نصية.");
+  return { answer, provider: "claude" };
+}
+
 async function runAI(env, user, prompt) {
   const provider = String(env.AI_PROVIDER || "auto").toLowerCase();
   const system = "أنت مساعد Store Market، سوق إلكتروني جزائري. أجب بلغة المستخدم (العربية أو الفرنسية)، بوضوح واختصار. ساعد في التسوق، فهم المنتجات، البيع وخدمة العملاء. لا تدّعِ توفر منتج أو سعر أو شحن أو دفع غير مثبت في البيانات. لا تطلب كلمات المرور أو رموز التحقق أو بيانات البطاقات. لا تنفذ أي شراء أو نشر أو تغيير سعر أو إجراء إداري؛ أنت تقدم معلومات واقتراحات فقط، وأي إجراء حساس يحتاج موافقة المالك. إذا لم تعرف معلومة فقل ذلك بوضوح.";
   const roleContext = user.role === "owner" ? "المستخدم هو مالك المنصة." : user.role === "seller" ? "المستخدم بائع." : "المستخدم عميل.";
-  if ((provider === "auto" || provider === "cloudflare") && env.AI) {
-    const result = await env.AI.run(env.CF_AI_MODEL || "@cf/meta/llama-3.1-8b-instruct-fast", {
-      messages: [
-        { role: "system", content: system + " " + roleContext },
-        { role: "user", content: prompt }
-      ],
-      max_tokens: 500
-    });
-    const answer = typeof result?.response === "string" ? result.response
-      : typeof result?.result?.response === "string" ? result.result.response
-      : typeof result?.output_text === "string" ? result.output_text : "";
-    if (!answer) throw new Error("تعذر قراءة استجابة محرك Cloudflare AI.");
-    return { answer, provider: "cloudflare" };
+  const fullSystem = system + " " + roleContext;
+  if (provider === "cloudflare") return runCloudflareAI(env, fullSystem, prompt);
+  if (provider === "claude" || provider === "anthropic") return runClaudeAI(env, fullSystem, prompt);
+  if (provider !== "auto") throw new Error("قيمة AI_PROVIDER غير معروفة. استخدم auto أو cloudflare أو claude.");
+
+  // Auto routing: quick everyday requests go to Cloudflare; complex work goes to Claude.
+  const complex = isComplexPrompt(prompt);
+  const primary = complex ? "claude" : "cloudflare";
+  const secondary = complex ? "cloudflare" : "claude";
+  const available = {
+    claude: !!env.ANTHROPIC_API_KEY,
+    cloudflare: !!env.AI
+  };
+  const run = primary === "claude" ? runClaudeAI : runCloudflareAI;
+  const fallback = secondary === "claude" ? runClaudeAI : runCloudflareAI;
+  if (available[primary]) {
+    try {
+      return await run(env, fullSystem, prompt);
+    } catch (error) {
+      if (!available[secondary]) throw error;
+      return fallback(env, fullSystem, prompt);
+    }
   }
-  if ((provider === "auto" || provider === "anthropic" || provider === "claude") && env.ANTHROPIC_API_KEY) {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: env.ANTHROPIC_MODEL || "claude-sonnet-5",
-        max_tokens: 500,
-        system: system + " " + roleContext,
-        messages: [{ role: "user", content: prompt }]
-      })
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error("تعذر الاتصال بمحرك Claude AI (" + response.status + ").");
-    const answer = Array.isArray(data.content) ? data.content.filter(x => x.type === "text").map(x => x.text).join("\n") : "";
-    if (!answer) throw new Error("لم يرجع Claude AI إجابة نصية.");
-    return { answer, provider: "claude" };
-  }
-  throw new Error("لم يتم إعداد محرك ذكاء اصطناعي. أضف ربط Workers AI أو مفتاح Claude في Cloudflare.");
+  if (available[secondary]) return fallback(env, fullSystem, prompt);
+  throw new Error("لم يتم إعداد أي محرك. اربط Workers AI أو أضف ANTHROPIC_API_KEY في Cloudflare.");
 }
 
 export async function onRequest({ request, env }) {
