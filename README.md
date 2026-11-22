@@ -34,6 +34,13 @@
 2. نفّذ محتوى `migrations/0001_initial.sql` مرة واحدة على قاعدة D1.
 3. من إعدادات Cloudflare Pages → Settings → Bindings، اربط قاعدة D1 باسم binding `DB`. لا تضع معرّف قاعدة البيانات في المستودع؛ احتفظ به داخل إعدادات Cloudflare.
 4. أضف Pages secrets: `OWNER_EMAIL` بقيمة البريد الإداري الذي تملكه، و`OWNER_SETUP_KEY` بمفتاح عشوائي قوي. لا تضع الأسرار في GitHub أو المحادثات.
+5. لإعداد المساعد الذكي، افتح Settings → Variables and Secrets في مشروع Pages:
+   - اربط Workers AI binding باسم `AI` (إن لم يكن مربوطاً).
+   - أضف `ANTHROPIC_API_KEY` كـ Secret لا كـ Plain Text. لا ترسل المفتاح إلى GitHub أو المحادثات.
+   - يمكن ضبط `ANTHROPIC_MODEL` اختيارياً؛ الافتراضي في الكود `claude-sonnet-5`.
+   - اترك `AI_PROVIDER` على `auto` أو لا تضفه: الطلبات القصيرة تذهب إلى Cloudflare AI، والطلبات التي تبدو معقدة تذهب إلى Claude، مع الرجوع إلى المحرك الآخر عند تعذر الأول إذا كان متاحاً.
+   - يمكن ضبط `CF_AI_MODEL` اختيارياً؛ الافتراضي `@cf/meta/llama-3.1-8b-instruct-fast`.
+6. أعد نشر Pages بعد إضافة المتغيرات والأسرار، ثم اختبر `/api/health` بعد إعداد D1، وسجّل الدخول لاختبار `/api/ai/status` وواجهة المحادثة.
 5. بعد نشر Functions، أرسل طلب POST واحداً إلى `/api/setup-owner` مع الترويسة `x-owner-setup-key` وجسم JSON من الشكل `{"name":"اسم المالك","password":"كلمة مرور قوية لا تقل عن 12 حرفاً"}`. لا ترسل كلمة المرور إلى أي شخص.
 6. احذف `OWNER_SETUP_KEY` من إعدادات Pages بعد نجاح إنشاء المالك.
 7. اختبر `/api/health` ثم التسجيل والدخول وإضافة منتج ومراجعته وإنشاء طلب تجريبي.
