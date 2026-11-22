@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { Bot, Send, X, Sparkles } from "lucide-react";
 
-type Message = { role: "user" | "assistant"; text: string };
+type Message = { role: "user" | "assistant"; text: string; provider?: "claude" | "cloudflare" };
 
 export default function AIAssistant({ lang }: { lang: "ar" | "fr" }) {
   const ar = lang === "ar";
@@ -29,7 +29,7 @@ export default function AIAssistant({ lang }: { lang: "ar" | "fr" }) {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || (ar ? "تعذر الاتصال بالمساعد." : "Assistant indisponible."));
-      setMessages(old => [...old, { role: "assistant", text: data.answer }]);
+      setMessages(old => [...old, { role: "assistant", text: data.answer, provider: data.provider }]);
     } catch (e) {
       setError(e instanceof Error ? e.message : (ar ? "حدث خطأ." : "Une erreur est survenue."));
     } finally {
@@ -45,7 +45,7 @@ export default function AIAssistant({ lang }: { lang: "ar" | "fr" }) {
       </header>
       <div style={{ padding: 12, flex: 1, overflowY: "auto", background: "#f6f8fa" }}>
         {!messages.length && <p style={{ color: "#536273", lineHeight: 1.8 }}>{ar ? "مرحباً! اسألني عن التسوق أو المنتجات أو البيع في Store Market." : "Bonjour ! Posez vos questions sur les produits, les achats ou la vente."}</p>}
-        {messages.map((m, i) => <div key={i} style={{ margin: "9px 0", display: "flex", justifyContent: m.role === "user" ? "flex-start" : "flex-end" }}><div style={{ maxWidth: "88%", padding: "10px 12px", borderRadius: 12, background: m.role === "user" ? "#e5edf5" : "#15283d", color: m.role === "user" ? "#182a3e" : "#fff", whiteSpace: "pre-wrap", lineHeight: 1.65, fontSize: 14 }}>{m.text}</div></div>)}
+        {messages.map((m, i) => <div key={i} style={{ margin: "9px 0", display: "flex", justifyContent: m.role === "user" ? "flex-start" : "flex-end" }}><div style={{ maxWidth: "88%", padding: "10px 12px", borderRadius: 12, background: m.role === "user" ? "#e5edf5" : "#15283d", color: m.role === "user" ? "#182a3e" : "#fff", whiteSpace: "pre-wrap", lineHeight: 1.65, fontSize: 14 }}>{m.text}{m.role === "assistant" && m.provider && <small style={{ display: "block", marginTop: 7, opacity: .72 }}>{m.provider === "claude" ? "Claude AI" : "Cloudflare AI"}</small>}</div></div>)}
         {busy && <p style={{ color: "#536273" }}>{ar ? "يفكر..." : "Réflexion..."}</p>}
         {error && <p role="alert" style={{ color: "#a32626", fontSize: 13 }}>{error}</p>}
       </div>
