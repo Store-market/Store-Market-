@@ -32,7 +32,7 @@
 ## إعداد قاعدة البيانات والحساب الإداري
 1. أنشئ Cloudflare D1 database باسم `store-market-db`.
 2. نفّذ محتوى `migrations/0001_initial.sql` مرة واحدة على قاعدة D1.
-3. ضع Database ID الفعلي مكان `REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID` في `wrangler.toml)، واربط D1 باسم binding `DB` في إعدادات Pages Functions.
+3. من إعدادات Cloudflare Pages → Settings → Bindings، اربط قاعدة D1 باسم binding `DB`. لا تضع معرّف قاعدة البيانات في المستودع؛ احتفظ به داخل إعدادات Cloudflare.
 4. أضف Pages secrets: `OWNER_EMAIL` بقيمة البريد الإداري الذي تملكه، و`OWNER_SETUP_KEY` بمفتاح عشوائي قوي. لا تضع الأسرار في GitHub أو المحادثات.
 5. بعد نشر Functions، أرسل طلب POST واحداً إلى `/api/setup-owner` مع الترويسة `x-owner-setup-key` وجسم JSON من الشكل `{"name":"اسم المالك","password":"كلمة مرور قوية لا تقل عن 12 حرفاً"}`. لا ترسل كلمة المرور إلى أي شخص.
 6. احذف `OWNER_SETUP_KEY` من إعدادات Pages بعد نجاح إنشاء المالك.
