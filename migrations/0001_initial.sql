@@ -1,4 +1,4 @@
--- Apply schema.sql using Cloudflare D1 console, or copy the statements here before running migrations.
+-- Apply this migration file (migrations/0001_initial.sql) to the Cloudflare D1 database once.
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS users (
