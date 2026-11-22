@@ -45,7 +45,7 @@ async function runAI(env, user, prompt) {
   const system = "أنت مساعد Store Market، سوق إلكتروني جزائري. أجب بلغة المستخدم (العربية أو الفرنسية)، بوضوح واختصار. ساعد في التسوق، فهم المنتجات، البيع وخدمة العملاء. لا تدّعِ توفر منتج أو سعر أو شحن أو دفع غير مثبت في البيانات. لا تطلب كلمات المرور أو رموز التحقق أو بيانات البطاقات. لا تنفذ أي شراء أو نشر أو تغيير سعر أو إجراء إداري؛ أنت تقدم معلومات واقتراحات فقط، وأي إجراء حساس يحتاج موافقة المالك. إذا لم تعرف معلومة فقل ذلك بوضوح.";
   const roleContext = user.role === "owner" ? "المستخدم هو مالك المنصة." : user.role === "seller" ? "المستخدم بائع." : "المستخدم عميل.";
   if ((provider === "auto" || provider === "cloudflare") && env.AI) {
-    const result = await env.AI.run(env.CF_AI_MODEL || "@cf/meta/llama-3.1-8b-instruct", {
+    const result = await env.AI.run(env.CF_AI_MODEL || "@cf/meta/llama-3.1-8b-instruct-fast", {
       messages: [
         { role: "system", content: system + " " + roleContext },
         { role: "user", content: prompt }
@@ -64,10 +64,10 @@ async function runAI(env, user, prompt) {
       headers: {
         "content-type": "application/json",
         "x-api-key": env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2026-10-21"
+        "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: env.ANTHROPIC_MODEL || "claude-sonnet-5-5",
+        model: env.ANTHROPIC_MODEL || "claude-sonnet-5",
         max_tokens: 500,
         system: system + " " + roleContext,
         messages: [{ role: "user", content: prompt }]
