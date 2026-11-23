@@ -122,6 +122,28 @@ async function runAI(env, user, prompt) {
   throw new Error("لم يتم إعداد أي محرك. اربط Workers AI أو أضف ANTHROPIC_API_KEY في Cloudflare.");
 }
 
+
+const BRAIN_SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS brain_tasks (id TEXT PRIMARY KEY,title TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',agent TEXT NOT NULL CHECK(agent IN ('manager','catalog','social_discovery','content_studio','approval','support','analytics','security')),status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','assigned','running','needs_approval','approved','completed','rejected','failed','cancelled')),priority INTEGER NOT NULL DEFAULT 3 CHECK(priority BETWEEN 1 AND 5),input_json TEXT NOT NULL DEFAULT '{}',output_json TEXT,source_url TEXT,created_by TEXT NOT NULL REFERENCES users(id),assigned_to TEXT,attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts >= 0),max_attempts INTEGER NOT NULL DEFAULT 3 CHECK(max_attempts BETWEEN 1 AND 5),created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,completed_at TEXT)`,
+  `CREATE INDEX IF NOT EXISTS idx_brain_tasks_status_created ON brain_tasks(status,created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_brain_tasks_agent_status ON brain_tasks(agent,status)`,
+  `CREATE TABLE IF NOT EXISTS brain_agent_runs (id TEXT PRIMARY KEY,task_id TEXT NOT NULL REFERENCES brain_tasks(id) ON DELETE CASCADE,agent TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('started','succeeded','failed','cancelled')),provider TEXT,input_summary TEXT NOT NULL DEFAULT '',output_summary TEXT NOT NULL DEFAULT '',error_code TEXT,started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,finished_at TEXT)`,
+  `CREATE INDEX IF NOT EXISTS idx_brain_runs_task ON brain_agent_runs(task_id,started_at)`,
+  `CREATE TABLE IF NOT EXISTS brain_approvals (id TEXT PRIMARY KEY,task_id TEXT NOT NULL REFERENCES brain_tasks(id) ON DELETE CASCADE,action_type TEXT NOT NULL CHECK(action_type IN ('publish_post','send_reply','send_message','change_price','change_stock','delete_content','launch_ad','other')),destination TEXT NOT NULL DEFAULT '',payload_json TEXT NOT NULL,payload_sha256 TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected','expired','executed','failed')),requested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,reviewed_by TEXT REFERENCES users(id),reviewed_at TEXT,expires_at TEXT)`,
+  `CREATE INDEX IF NOT EXISTS idx_brain_approvals_status ON brain_approvals(status,requested_at)`,
+  `CREATE TABLE IF NOT EXISTS brain_social_sources (id TEXT PRIMARY KEY,platform TEXT NOT NULL,source_url TEXT NOT NULL,creator_name TEXT NOT NULL DEFAULT '',rights_status TEXT NOT NULL DEFAULT 'unknown' CHECK(rights_status IN ('unknown','licensed','permission_granted','reference_only','blocked')),rights_evidence TEXT NOT NULL DEFAULT '',discovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,created_by TEXT NOT NULL REFERENCES users(id))`,
+  `CREATE INDEX IF NOT EXISTS idx_brain_sources_platform ON brain_social_sources(platform)`,
+  `CREATE TABLE IF NOT EXISTS brain_content_drafts (id TEXT PRIMARY KEY,task_id TEXT REFERENCES brain_tasks(id) ON DELETE SET NULL,platform TEXT NOT NULL,title TEXT NOT NULL DEFAULT '',body TEXT NOT NULL,media_reference TEXT NOT NULL DEFAULT '',rights_status TEXT NOT NULL DEFAULT 'original' CHECK(rights_status IN ('original','licensed','permission_granted','reference_only','unknown')),status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','pending_approval','approved','published','rejected')),scheduled_at TEXT,created_by TEXT NOT NULL REFERENCES users(id),created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+  `CREATE INDEX IF NOT EXISTS idx_brain_drafts_status ON brain_content_drafts(status,created_at)`,
+  `CREATE TABLE IF NOT EXISTS brain_audit_events (id TEXT PRIMARY KEY,actor_user_id TEXT REFERENCES users(id),actor_type TEXT NOT NULL CHECK(actor_type IN ('owner','agent','system')),event_type TEXT NOT NULL,entity_type TEXT NOT NULL,entity_id TEXT NOT NULL,details_json TEXT NOT NULL DEFAULT '{}',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+  `CREATE INDEX IF NOT EXISTS idx_brain_audit_entity ON brain_audit_events(entity_type,entity_id,created_at)`,
+  `CREATE TABLE IF NOT EXISTS brain_social_connections (id TEXT PRIMARY KEY,platform TEXT NOT NULL,account_label TEXT NOT NULL DEFAULT '',external_account_id TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'not_connected' CHECK(status IN ('not_connected','connected','expired','revoked','error')),granted_scopes TEXT NOT NULL DEFAULT '',connected_at TEXT,last_checked_at TEXT,created_by TEXT NOT NULL REFERENCES users(id))`,
+  `CREATE INDEX IF NOT EXISTS idx_brain_social_connections_platform ON brain_social_connections(platform,status)`
+];
+async function ensureBrainSchema(DB) {
+  for (const statement of BRAIN_SCHEMA) await DB.prepare(statement).run();
+}
+
 export async function onRequest({ request, env }) {
   if (!env.DB) return fail("قاعدة البيانات غير مربوطة بعد. راجع إعداد Cloudflare D1.", 503);
   const url = new URL(request.url);
@@ -131,7 +153,9 @@ export async function onRequest({ request, env }) {
   try {
     if (path === "health" && method === "GET") {
       await env.DB.prepare("SELECT 1").first();
-      return json({ ok: true, service: "Store Market API", database: "connected" });
+      await ensureBrainSchema(env.DB);
+      const brain = await env.DB.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name LIKE 'brain_%'").first();
+      return json({ ok: true, service: "Store Market API", database: "connected", brain: brain?.n === 7 ? "ready" : "schema_incomplete", brain_tables: brain?.n || 0 });
     }
 
     if (path === "setup-owner" && method === "POST") {
@@ -196,6 +220,84 @@ export async function onRequest({ request, env }) {
     const user = await currentUser(request, env);
     if (!user) return fail("يلزم تسجيل الدخول.", 401);
 
+
+
+    if (path.startsWith("brain/")) {
+      if (user.role !== "owner") return fail("هذه الخدمة للمالك فقط.", 403);
+      await ensureBrainSchema(env.DB);
+      if (path === "brain/overview" && method === "GET") {
+        const [tasks, pending, drafts, connections] = await Promise.all([
+          env.DB.prepare("SELECT COUNT(*) AS n FROM brain_tasks").first(),
+          env.DB.prepare("SELECT COUNT(*) AS n FROM brain_approvals WHERE status='pending'").first(),
+          env.DB.prepare("SELECT COUNT(*) AS n FROM brain_content_drafts WHERE status IN ('draft','pending_approval')").first(),
+          env.DB.prepare("SELECT COUNT(*) AS n FROM brain_social_connections WHERE status='connected'").first()
+        ]);
+        return json({ tasks:tasks.n, pending_approvals:pending.n, drafts:drafts.n, connected_social_accounts:connections.n, ai_configured:!!env.AI||!!env.ANTHROPIC_API_KEY });
+      }
+      if (path === "brain/tasks" && method === "GET") {
+        const rows = await env.DB.prepare("SELECT id,title,description,agent,status,priority,source_url,attempts,created_at,updated_at FROM brain_tasks ORDER BY created_at DESC LIMIT 100").all();
+        return json({ tasks:rows.results||[] });
+      }
+      if (path === "brain/tasks" && method === "POST") {
+        const data = await body(request);
+        const agents = ["manager","catalog","social_discovery","content_studio","approval","support","analytics","security"];
+        if (!requireFields(data,["title"]) || (data.agent && !agents.includes(data.agent))) return fail("عنوان المهمة أو الوكيل غير صالح.");
+        const id=uid(), agent=data.agent||"manager", priority=Number.isInteger(data.priority)?Math.max(1,Math.min(5,data.priority)):3;
+        await env.DB.prepare("INSERT INTO brain_tasks (id,title,description,agent,priority,input_json,source_url,created_by) VALUES (?,?,?,?,?,?,?,?)")
+          .bind(id,data.title.trim().slice(0,180),String(data.description||"").slice(0,4000),agent,priority,JSON.stringify(data.input||{}),String(data.source_url||"").slice(0,1000),user.id).run();
+        await env.DB.prepare("INSERT INTO brain_audit_events (id,actor_user_id,actor_type,event_type,entity_type,entity_id,details_json) VALUES (?,?, 'owner','task_created','brain_task',?,?)")
+          .bind(uid(),user.id,id,JSON.stringify({agent,priority})).run();
+        return json({ok:true,id,status:"queued"},201);
+      }
+      if (path === "brain/approvals" && method === "GET") {
+        const rows=await env.DB.prepare("SELECT id,task_id,action_type,destination,payload_json,status,requested_at,expires_at FROM brain_approvals ORDER BY requested_at DESC LIMIT 100").all();
+        return json({approvals:rows.results||[]});
+      }
+      if (path === "brain/approvals" && method === "POST") {
+        const data=await body(request);
+        const allowed=["publish_post","send_reply","send_message","change_price","change_stock","delete_content","launch_ad","other"];
+        if(!requireFields(data,["task_id","action_type","payload_json"])||!allowed.includes(data.action_type)) return fail("بيانات الموافقة غير مكتملة.");
+        const task=await env.DB.prepare("SELECT id FROM brain_tasks WHERE id=?").bind(data.task_id).first();
+        if(!task) return fail("المهمة غير موجودة.",404);
+        const payload=typeof data.payload_json==="string"?data.payload_json:JSON.stringify(data.payload_json);
+        const id=uid(), hash=await digest(payload);
+        await env.DB.prepare("INSERT INTO brain_approvals (id,task_id,action_type,destination,payload_json,payload_sha256,expires_at) VALUES (?,?,?,?,?,?,?)")
+          .bind(id,data.task_id,data.action_type,String(data.destination||"").slice(0,300),payload,hash,new Date(Date.now()+7*86400000).toISOString()).run();
+        await env.DB.prepare("UPDATE brain_tasks SET status='needs_approval',updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(data.task_id).run();
+        return json({ok:true,id,status:"pending"},201);
+      }
+      if (path.startsWith("brain/approvals/") && method === "PATCH") {
+        const id=path.slice("brain/approvals/".length), data=await body(request);
+        if(!["approved","rejected"].includes(data?.status)) return fail("قرار الموافقة غير صالح.");
+        const row=await env.DB.prepare("SELECT task_id,status FROM brain_approvals WHERE id=?").bind(id).first();
+        if(!row||row.status!=="pending") return fail("طلب الموافقة غير موجود أو تمت مراجعته.",404);
+        await env.DB.prepare("UPDATE brain_approvals SET status=?,reviewed_by=?,reviewed_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'")
+          .bind(data.status,user.id,id).run();
+        await env.DB.prepare("UPDATE brain_tasks SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+          .bind(data.status==="approved"?"approved":"rejected",row.task_id).run();
+        await env.DB.prepare("INSERT INTO brain_audit_events (id,actor_user_id,actor_type,event_type,entity_type,entity_id,details_json) VALUES (?,?, 'owner',?,?,?,?)")
+          .bind(uid(),user.id,"approval_"+data.status,"brain_approval",id,"{}").run();
+        return json({ok:true,status:data.status,execution:"not_configured"});
+      }
+      if (path === "brain/drafts" && method === "GET") {
+        const rows=await env.DB.prepare("SELECT id,task_id,platform,title,body,media_reference,rights_status,status,scheduled_at,created_at FROM brain_content_drafts ORDER BY created_at DESC LIMIT 100").all();
+        return json({drafts:rows.results||[]});
+      }
+      if (path === "brain/drafts" && method === "POST") {
+        const data=await body(request);
+        if(!requireFields(data,["platform","body"])) return fail("المنصة ونص المسودة مطلوبان.");
+        const rights=["original","licensed","permission_granted","reference_only","unknown"];
+        const rightsStatus=rights.includes(data.rights_status)?data.rights_status:"original";
+        const id=uid();
+        await env.DB.prepare("INSERT INTO brain_content_drafts (id,task_id,platform,title,body,media_reference,rights_status,created_by) VALUES (?,?,?,?,?,?,?,?)")
+          .bind(id,data.task_id||null,String(data.platform).slice(0,40),String(data.title||"").slice(0,180),String(data.body).slice(0,5000),String(data.media_reference||"").slice(0,1000),rightsStatus,user.id).run();
+        return json({ok:true,id,status:"draft"},201);
+      }
+      if (path === "brain/social" && method === "GET") {
+        const rows=await env.DB.prepare("SELECT platform,account_label,status,granted_scopes,last_checked_at FROM brain_social_connections ORDER BY platform").all();
+        return json({connections:rows.results||[]});
+      }
+    }
 
     if (path === "ai/status" && method === "GET") {
       return json({ configured: !!env.AI || !!env.ANTHROPIC_API_KEY, provider: env.AI_PROVIDER || "auto" });
