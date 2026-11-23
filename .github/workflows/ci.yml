@@ -1,7 +1,7 @@
 name: Store Market CI
 on:
   push:
-    branches: [store-market-fresh]
+    branches: [main, store-market-fresh]
   pull_request:
     branches: [main]
 jobs:
