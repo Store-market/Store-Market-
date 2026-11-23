@@ -1,0 +1,8 @@
+name = "store-market-dz"
+compatibility_date = "2026-11-21"
+pages_build_output_dir = "./dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "store-market-db"
+database_id = "f9e8784d-ba01-462d-b8c9-a0aea52706c9"
