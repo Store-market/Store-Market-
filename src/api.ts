@@ -58,6 +58,7 @@ export const storeApi = {
   brainTasks: () => request<{tasks:Array<Record<string,unknown>>}>("brain/tasks",{method:"GET"}),
   createBrainTask: (input:{title:string;description?:string;agent?:string;priority?:number;source_url?:string}) =>
     request<{ok:boolean;id:string;status:string}>("brain/tasks",{method:"POST",body:JSON.stringify(input)}),
+  runBrainTask: (id:string) => request<{ok:boolean;status:string;provider:string;output:string}>(`brain/tasks/${encodeURIComponent(id)}/run`,{method:"POST"}),
   brainApprovals: () => request<{approvals:Array<Record<string,unknown>>}>("brain/approvals",{method:"GET"}),
   reviewBrainApproval: (id:string,status:"approved"|"rejected") =>
     request<{ok:boolean;status:string;execution:string}>(`brain/approvals/${encodeURIComponent(id)}`,{method:"PATCH",body:JSON.stringify({status})}),
