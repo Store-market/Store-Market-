@@ -152,10 +152,16 @@ export async function onRequest({ request, env }) {
 
   try {
     if (path === "health" && method === "GET") {
+      // Public health checks must be read-only: never create or mutate database schema.
       await env.DB.prepare("SELECT 1").first();
-      await ensureBrainSchema(env.DB);
       const brain = await env.DB.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name LIKE 'brain_%'").first();
-      return json({ ok: true, service: "Store Market API", database: "connected", brain: brain?.n === 7 ? "ready" : "schema_incomplete", brain_tables: brain?.n || 0 });
+      return json({
+        ok: true,
+        service: "Store Market API",
+        database: "connected",
+        brain: brain?.n === 7 ? "ready" : "schema_incomplete",
+        brain_tables: brain?.n || 0
+      });
     }
 
     if (path === "setup-owner" && method === "POST") {
