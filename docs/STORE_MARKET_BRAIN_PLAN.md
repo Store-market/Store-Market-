@@ -30,7 +30,7 @@ Each task records agent, input references, output summary, timestamps, retries, 
 ## Implementation tasks
 - [ ] Bind existing Cloudflare D1 database to Pages runtime as `DB`; verify `/api/health`.
 - [ ] Apply and verify the current initial migration on that database without duplicating existing tables.
-- [ ] Add D1 migration for task queue, agent runs, social connections metadata, content candidates, approval requests, and audit events.
+- [x] Create D1 migration `migrations/0002_store_market_brain.sql` for task queue, agent runs, social connection metadata, content drafts, approval requests, and audit events (still must be applied to the live D1 database).
 - [ ] Implement owner-only APIs for task creation, assignment, status, approval/rejection, and audit history.
 - [ ] Add Brain dashboard: task inbox, agent status, approvals, failed jobs, activity log, and cost/usage visibility.
 - [ ] Add scheduled worker/cron dispatcher with bounded retries and a kill switch.
