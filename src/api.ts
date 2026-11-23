@@ -53,4 +53,16 @@ export const storeApi = {
   adminProducts: () => request<{ products: ApiProduct[] }>("admin/products", { method: "GET" }),
   setProductStatus: (id: string, status: "active" | "pending" | "rejected") =>
     request<{ ok: boolean }>(`admin/products/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ status }) }),
+
+  brainOverview: () => request<{tasks:number;pending_approvals:number;drafts:number;connected_social_accounts:number;ai_configured:boolean}>("brain/overview",{method:"GET"}),
+  brainTasks: () => request<{tasks:Array<Record<string,unknown>>}>("brain/tasks",{method:"GET"}),
+  createBrainTask: (input:{title:string;description?:string;agent?:string;priority?:number;source_url?:string}) =>
+    request<{ok:boolean;id:string;status:string}>("brain/tasks",{method:"POST",body:JSON.stringify(input)}),
+  brainApprovals: () => request<{approvals:Array<Record<string,unknown>>}>("brain/approvals",{method:"GET"}),
+  reviewBrainApproval: (id:string,status:"approved"|"rejected") =>
+    request<{ok:boolean;status:string;execution:string}>(`brain/approvals/${encodeURIComponent(id)}`,{method:"PATCH",body:JSON.stringify({status})}),
+  brainDrafts: () => request<{drafts:Array<Record<string,unknown>>}>("brain/drafts",{method:"GET"}),
+  createBrainDraft: (input:{platform:string;title?:string;body:string;rights_status?:"original"|"licensed"|"permission_granted"|"reference_only"|"unknown"}) =>
+    request<{ok:boolean;id:string;status:string}>("brain/drafts",{method:"POST",body:JSON.stringify(input)}),
+  brainSocial: () => request<{connections:Array<Record<string,unknown>>}>("brain/social",{method:"GET"}),
 };
