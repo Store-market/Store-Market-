@@ -154,14 +154,25 @@ export async function onRequest({ request, env }) {
     if (path === "health" && method === "GET") {
       // Public health checks must be read-only: never create or mutate database schema.
       await env.DB.prepare("SELECT 1").first();
-      const brain = await env.DB.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name LIKE 'brain_%'").first();
+      const core = await env.DB.prepare(
+        "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('users','sessions','products','orders','order_items')"
+      ).first();
+      const brain = await env.DB.prepare(
+        "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name LIKE 'brain_%'"
+      ).first();
+      const coreTables = Number(core?.n || 0);
+      const brainTables = Number(brain?.n || 0);
+      const coreReady = coreTables === 5;
+      const brainReady = brainTables === 7;
       return json({
-        ok: true,
+        ok: coreReady,
         service: "Store Market API",
         database: "connected",
-        brain: brain?.n === 7 ? "ready" : "schema_incomplete",
-        brain_tables: brain?.n || 0
-      });
+        core_schema: coreReady ? "ready" : "incomplete",
+        core_tables: coreTables,
+        brain: brainReady ? "ready" : "schema_incomplete",
+        brain_tables: brainTables
+      }, coreReady ? 200 : 503);
     }
 
     if (path === "setup-owner" && method === "POST") {
