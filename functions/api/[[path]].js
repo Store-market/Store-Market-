@@ -249,6 +249,34 @@ export async function onRequest({ request, env }) {
           .bind(uid(),user.id,id,JSON.stringify({agent,priority})).run();
         return json({ok:true,id,status:"queued"},201);
       }
+
+      if (path.startsWith("brain/tasks/") && path.endsWith("/run") && method === "POST") {
+        const id=path.slice("brain/tasks/".length,-4);
+        const task=await env.DB.prepare("SELECT id,title,description,agent,input_json,status,attempts,max_attempts FROM brain_tasks WHERE id=?").bind(id).first();
+        if(!task) return fail("المهمة غير موجودة.",404);
+        if(["completed","rejected","cancelled"].includes(task.status)) return fail("لا يمكن تشغيل مهمة منتهية.",409);
+        if(task.attempts>=task.max_attempts) return fail("تم بلوغ الحد الأقصى لمحاولات المهمة.",409);
+        await env.DB.prepare("UPDATE brain_tasks SET status='running',attempts=attempts+1,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(id).run();
+        const runId=uid();
+        await env.DB.prepare("INSERT INTO brain_agent_runs (id,task_id,agent,status,provider,input_summary) VALUES (?,?,?,'started',NULL,?)")
+          .bind(runId,id,task.agent,String(task.description||task.title).slice(0,500)).run();
+        try {
+          const prompt="نفّذ المهمة التالية لمتجر إلكتروني جزائري. أعد نتيجة عملية ومنظمة، وميّز بوضوح بين الحقائق والاقتراحات. لا تدّع الوصول إلى الإنترنت أو حسابات التواصل أو بيانات غير موجودة. لا تنشر ولا ترسل رسائل ولا تغيّر أسعاراً أو مخزوناً. إذا كانت المهمة تتطلب إجراءً خارجياً فأنشئ توصية ومسودة فقط.\n\nالوكيل: "+task.agent+"\nالعنوان: "+task.title+"\nالوصف: "+task.description+"\nمدخلات: "+task.input_json;
+          const result=await runAI(env,{role:"owner"},prompt);
+          await env.DB.prepare("UPDATE brain_tasks SET status='completed',output_json=?,updated_at=CURRENT_TIMESTAMP,completed_at=CURRENT_TIMESTAMP WHERE id=?")
+            .bind(JSON.stringify({answer:result.answer,provider:result.provider}),id).run();
+          await env.DB.prepare("UPDATE brain_agent_runs SET status='succeeded',provider=?,output_summary=?,finished_at=CURRENT_TIMESTAMP WHERE id=?")
+            .bind(result.provider,result.answer.slice(0,3000),runId).run();
+          await env.DB.prepare("INSERT INTO brain_audit_events (id,actor_user_id,actor_type,event_type,entity_type,entity_id,details_json) VALUES (?,?, 'owner','task_run_completed','brain_task',?,?)")
+            .bind(uid(),user.id,id,JSON.stringify({provider:result.provider})).run();
+          return json({ok:true,id,status:"completed",provider:result.provider,output:result.answer});
+        } catch(error) {
+          await env.DB.prepare("UPDATE brain_tasks SET status='failed',updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(id).run();
+          await env.DB.prepare("UPDATE brain_agent_runs SET status='failed',error_code=?,finished_at=CURRENT_TIMESTAMP WHERE id=?")
+            .bind(error instanceof Error?error.message.slice(0,300):"ai_error",runId).run();
+          return fail(error instanceof Error?error.message:"تعذر تشغيل الوكيل الذكي.",503);
+        }
+      }
       if (path === "brain/approvals" && method === "GET") {
         const rows=await env.DB.prepare("SELECT id,task_id,action_type,destination,payload_json,status,requested_at,expires_at FROM brain_approvals ORDER BY requested_at DESC LIMIT 100").all();
         return json({approvals:rows.results||[]});
