@@ -28,11 +28,11 @@ Alternative terminal states: `rejected`, `failed`, `cancelled`.
 Each task records agent, input references, output summary, timestamps, retries, approval actor/time, and audit events. Retries must be bounded and idempotent.
 
 ## Implementation tasks
-- [ ] Bind existing Cloudflare D1 database to Pages runtime as `DB`; verify `/api/health`.
+- [x] Bind existing Cloudflare D1 database to Pages runtime as `DB`; production `/api/health` confirms `database: connected`.
 - [ ] Apply and verify the current initial migration on that database without duplicating existing tables.
-- [x] Create D1 migration `migrations/0002_store_market_brain.sql` for task queue, agent runs, social connection metadata, content drafts, approval requests, and audit events (still must be applied to the live D1 database).
-- [ ] Implement owner-only APIs for task creation, assignment, status, approval/rejection, and audit history.
-- [ ] Add Brain dashboard: task inbox, agent status, approvals, failed jobs, activity log, and cost/usage visibility.
+- [x] Create D1 migration `migrations/0002_store_market_brain.sql`; the API now applies its idempotent table/index definitions during `/api/health` and Brain API initialization.
+- [x] Implement owner-only APIs for task creation, approval/rejection, drafts, overview, and social connection status; assignment/agent execution/audit UI remain pending.
+- [x] Add initial owner Brain dashboard with task inbox, approval review, drafts, and connection/AI status; detailed run monitoring and cost/usage visibility remain pending.
 - [ ] Add scheduled worker/cron dispatcher with bounded retries and a kill switch.
 - [ ] Add official OAuth connectors one platform at a time; request least-privilege scopes and store tokens only as encrypted server-side secrets.
 - [ ] Add social discovery from approved public sources and content-rights/attribution records.
