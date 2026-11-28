@@ -242,6 +242,28 @@ export async function onRequest({ request, env }) {
     if (path.startsWith("brain/")) {
       if (user.role !== "owner") return fail("هذه الخدمة للمالك فقط.", 403);
       await ensureBrainSchema(env.DB);
+      if (path === "brain/system-status" && method === "GET") {
+        const tableNames = ["brain_tasks","brain_agent_runs","brain_approvals","brain_social_sources","brain_content_drafts","brain_audit_events","brain_social_connections"];
+        const counts = await Promise.all(tableNames.map(name => env.DB.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name=?").bind(name).first()));
+        const schemaReady = counts.every(row => Number(row?.n || 0) === 1);
+        const [pendingApprovals, draftCount, socialConnected] = await Promise.all([
+          schemaReady ? env.DB.prepare("SELECT COUNT(*) AS n FROM brain_approvals WHERE status='pending'").first() : Promise.resolve({n:0}),
+          schemaReady ? env.DB.prepare("SELECT COUNT(*) AS n FROM brain_content_drafts WHERE status IN ('draft','pending_approval')").first() : Promise.resolve({n:0}),
+          schemaReady ? env.DB.prepare("SELECT COUNT(*) AS n FROM brain_social_connections WHERE status='connected'").first() : Promise.resolve({n:0})
+        ]);
+        return json({
+          ok: schemaReady && (!!env.AI || !!env.ANTHROPIC_API_KEY),
+          schema: schemaReady ? "ready" : "incomplete",
+          schema_tables_found: counts.filter(row => Number(row?.n || 0) === 1).length,
+          schema_tables_required: tableNames.length,
+          ai_configured: !!env.AI || !!env.ANTHROPIC_API_KEY,
+          ai_provider_setting: env.AI_PROVIDER || "auto",
+          social_connections_ready: Number(socialConnected?.n || 0),
+          pending_approvals: Number(pendingApprovals?.n || 0),
+          draft_count: Number(draftCount?.n || 0),
+          execution_mode: "draft_only_no_external_actions"
+        });
+      }
       if (path === "brain/overview" && method === "GET") {
         const [tasks, pending, drafts, connections] = await Promise.all([
           env.DB.prepare("SELECT COUNT(*) AS n FROM brain_tasks").first(),
