@@ -55,6 +55,7 @@ export const storeApi = {
     request<{ ok: boolean }>(`admin/products/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ status }) }),
 
   brainOverview: () => request<{tasks:number;pending_approvals:number;drafts:number;connected_social_accounts:number;ai_configured:boolean}>("brain/overview",{method:"GET"}),
+  brainSystemStatus: () => request<{ok:boolean;schema:string;schema_tables_found:number;schema_tables_required:number;ai_configured:boolean;ai_provider_setting:string;social_connections_ready:number;pending_approvals:number;draft_count:number;execution_mode:string}>("brain/system-status",{method:"GET"}),
   brainTasks: () => request<{tasks:Array<Record<string,unknown>>}>("brain/tasks",{method:"GET"}),
   createBrainTask: (input:{title:string;description?:string;agent?:string;priority?:number;source_url?:string}) =>
     request<{ok:boolean;id:string;status:string}>("brain/tasks",{method:"POST",body:JSON.stringify(input)}),
