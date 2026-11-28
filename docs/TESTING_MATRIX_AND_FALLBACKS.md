@@ -1,6 +1,15 @@
 # Store Market test matrix and fallback-tool plan
 
-Updated: 2026-11-28. Source-only planning; live checks remain unrun.
+Updated: 2026-11-28.
+
+## Verified CI evidence
+
+- GitHub Actions workflow **Store Market CI**, run #69, on PR #3 / branch `work/launch-readiness-checklist`.
+- Result: **completed successfully** for commit `089d46ce5245c6a6f5a9e78ee5d2e95db618063f`.
+- This confirms the repository CI workflow passed; it does not verify a live Cloudflare deployment, database connectivity, end-to-end tests, or payment readiness.
+- Run: https://github.com/Store-market/Store-Market-/actions/runs/46134649648
+
+Live production checks remain unrun.
 
 ## Test matrix
 
