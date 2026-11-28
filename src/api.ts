@@ -34,7 +34,12 @@ export const storeApi = {
     request<{ user: ApiUser }>("auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
   me: () => request<{ user: ApiUser }>("auth/me", { method: "GET" }),
   logout: () => request<{ ok: boolean }>("auth/logout", { method: "POST" }),
-  products: () => request<{ products: ApiProduct[] }>("products", { method: "GET" }),
+  products: (filters: { q?: string; category?: string; sort?: "newest" | "price_asc" | "price_desc" | "popular"; page?: number; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => { if (value !== undefined && value !== "") params.set(key, String(value)); });
+    const suffix = params.toString();
+    return request<{ products: ApiProduct[]; pagination?: { page: number; limit: number; total: number; pages: number }; sort?: string }>("products" + (suffix ? "?" + suffix : ""), { method: "GET" });
+  },
   createSellerProduct: (input: { name: string; description?: string; category: string; price_dzd: number; stock: number; image_url?: string }) =>
     request<{ ok: boolean; id: string; message: string }>("seller/products", { method: "POST", body: JSON.stringify(input) }),
   createDemoCodOrder: (input: { customer_name: string; phone: string; wilaya: string; address: string; items: ApiOrderItem[] }) =>
