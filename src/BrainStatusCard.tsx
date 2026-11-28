@@ -25,7 +25,7 @@ export default function BrainStatusCard() {
         <div style={{background:"#fff",borderRadius:10,padding:12}}>{mark(status.schema==="ready")}<b style={{marginInlineStart:8}}>قاعدة البيانات</b><p style={{margin:"8px 0 0"}}>{status.schema_tables_found}/{status.schema_tables_required} جداول Brain</p></div>
         <div style={{background:"#fff",borderRadius:10,padding:12}}>{mark(status.ai_configured)}<b style={{marginInlineStart:8}}>محرك الذكاء الاصطناعي</b><p style={{margin:"8px 0 0"}}>{status.ai_configured?status.ai_provider_setting:"غير مضبوط"}</p></div>
         <div style={{background:"#fff",borderRadius:10,padding:12}}><ShieldCheck size={18} color="#2563eb"/><b style={{marginInlineStart:8}}>الموافقات المعلقة</b><p style={{margin:"8px 0 0"}}>{status.pending_approvals}</p></div>
-        <div style={{background:"#fff",borderRadius:10,padding:12}}><Activity size={18} color="#2563eb"/><b style={{marginInlineStart:8}}>المسودات</b><p style={{margin:"8px 0 0"}}>{status.draft_count}</p></div>
+        <div style={{background:"#fff",borderRadius:10,padding:12}}><Activity size={18} color="#2563eb"/><b style={{marginInlineStart:8}}>المسودات</b><p style={{margin:"8px 0 0"}}>{status.draft_count}</p></div><div style={{background:"#fff",borderRadius:10,padding:12}}><Activity size={18} color="#2563eb"/><b style={{marginInlineStart:8}}>الاتصالات الاجتماعية</b><p style={{margin:"8px 0 0"}}>{status.social_connections_ready} اتصال متحقق</p></div>
       </div>
       <p style={{display:"flex",gap:8,alignItems:"center",marginTop:14,padding:10,background:"#fff7ed",borderRadius:10}}><AlertTriangle size={18} color="#c2410c"/><span>وضع التنفيذ الحالي: <b>مسودات فقط — لا يوجد نشر أو إجراء خارجي تلقائي</b></span></p>
     </>}
