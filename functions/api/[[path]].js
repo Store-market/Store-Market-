@@ -230,10 +230,26 @@ export async function onRequest({ request, env }) {
     }
 
     if (path === "products" && method === "GET") {
-      const rows = await env.DB.prepare("SELECT id,name,description,category,price_dzd,stock,image_url,seller_id FROM products WHERE status='active' ORDER BY created_at DESC LIMIT 100").all();
-      return json({ products: rows.results || [] });
+      const params = new URL(request.url).searchParams;
+      const query = (params.get("q") || "").trim().slice(0, 100);
+      const category = (params.get("category") || "").trim().slice(0, 80);
+      const sort = params.get("sort") || "newest";
+      const sortSql = sort === "price_asc" ? "price_dzd ASC, created_at DESC"
+        : sort === "price_desc" ? "price_dzd DESC, created_at DESC"
+        : sort === "popular" ? "stock DESC, created_at DESC"
+        : "created_at DESC";
+      const page = Math.max(1, Math.min(1000, Number.parseInt(params.get("page") || "1", 10) || 1));
+      const pageSize = Math.max(1, Math.min(50, Number.parseInt(params.get("limit") || "20", 10) || 20));
+      const filters = ["status='active'"];
+      const bindings = [];
+      if (query) { filters.push("(name LIKE ? OR description LIKE ?)"); bindings.push("%" + query + "%", "%" + query + "%"); }
+      if (category) { filters.push("category=?"); bindings.push(category); }
+      const whereSql = filters.join(" AND ");
+      const countRow = await env.DB.prepare("SELECT COUNT(*) AS total FROM products WHERE " + whereSql).bind(...bindings).first();
+      const rows = await env.DB.prepare("SELECT id,name,description,category,price_dzd,stock,image_url,seller_id FROM products WHERE " + whereSql + " ORDER BY " + sortSql + " LIMIT ? OFFSET ?").bind(...bindings, pageSize, (page - 1) * pageSize).all();
+      const total = Number(countRow?.total || 0);
+      return json({ products: rows.results || [], pagination: { page, limit: pageSize, total, pages: Math.ceil(total / pageSize) }, sort });
     }
-
     const user = await currentUser(request, env);
     if (!user) return fail("يلزم تسجيل الدخول.", 401);
 
